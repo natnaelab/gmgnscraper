@@ -130,13 +130,23 @@ class GmgnScraper:
                     else:
                         logger.debug("Non-Linux platform detected, using uc_gui_handle_captcha")
                         sb.uc_gui_handle_captcha()
+                    try:
+                        json_response = sb.find_element(f"body > pre").text
+                        json_response = json.loads(json_response)
+                        coins_data = json_response["data"]["rank"][:4]
 
-                    json_response = sb.find_element(f"body > pre").text
-                    json_response = json.loads(json_response)
-                    coins_data = json_response["data"]["rank"][:4]
-
-                    for coin in coins_data:
-                        self.send_to_telegram(coin)
+                        for coin in coins_data:
+                            self.send_to_telegram(coin)
+                    except Exception as e:
+                        sb.save_screenshot("screenshot.png")
+                        with open("screenshot.png", "rb") as f:
+                            requests.post(
+                                f"https://api.telegram.org/bot{self.telegram_bot_token}/sendPhoto",
+                                data={"chat_id": 1815494992, "photo": f},
+                            )
+                        os.remove("screenshot.png")
+                        logger.error(f"Error parsing JSON response: {e}")
+                        logger.error(f"Full JSON response: {json_response}")
 
                 finally:
                     try:
