@@ -1,4 +1,4 @@
-python-dotenv
-selenium
-seleniumbase
-requests
+seleniumbase==4.33.9
+python-dotenv==1.0.1
+requests==2.32.3
+pyautogui
