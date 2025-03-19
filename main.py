@@ -131,7 +131,9 @@ class GmgnScraper:
                         logger.debug("Non-Linux platform detected, using uc_gui_handle_captcha")
                         sb.uc_gui_handle_captcha()
                     try:
-                        json_response = sb.find_element(f"body > pre").text
+                        json_response = sb.find_element(f"body").text
+                        with open("response.txt", "w") as f:
+                            f.write(json_response)
                         json_response = json.loads(json_response)
                         coins_data = json_response["data"]["rank"][:4]
 
