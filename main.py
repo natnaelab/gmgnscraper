@@ -1,7 +1,5 @@
 import logging
 from logging.handlers import RotatingFileHandler
-from seleniumbase import SB
-from selenium.webdriver.common.by import By
 import platform
 import requests
 import os
@@ -9,6 +7,7 @@ import json
 import subprocess
 from datetime import datetime
 from dotenv import load_dotenv
+from curl_cffi import requests as curl_requests
 
 load_dotenv()
 
@@ -118,51 +117,58 @@ class GmgnScraper:
     def scrape(self):
         logger.info("Starting scraping process")
         try:
-            with SB(uc=True, incognito=True, xvfb=True, undetectable=True, page_load_strategy="eager") as sb:
+            # Configure headers to mimic a browser
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://gmgn.ai/",
+                "Origin": "https://gmgn.ai",
+                "Connection": "keep-alive",
+                "sec-ch-ua": '"Google Chrome";v="91", "Chromium";v="91", ";Not A Brand";v="99"',
+                "sec-ch-ua-mobile": "?0",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+            }
+
+            logger.info(f"Sending request to URL: {self.url}")
+
+            # Use curl_cffi to bypass Cloudflare protections
+            response = curl_requests.get(self.url, headers=headers, impersonate="chrome110", timeout=60)
+
+            # Check if the request was successful
+            if response.status_code == 200:
                 try:
-                    logger.info(f"Opening URL: {self.url}")
-                    sb.uc_open_with_reconnect(self.url, 5)
+                    json_response = response.json()
+                    logger.info("Successfully retrieved data from API")
 
-                    logger.info("Handling captcha based on platform")
-                    if platform.system() == "Linux":
-                        logger.debug("Linux platform detected, using uc_gui_click_captcha")
-                        sb.uc_gui_click_captcha()
-                    else:
-                        logger.debug("Non-Linux platform detected, using uc_gui_handle_captcha")
-                        sb.uc_gui_handle_captcha()
-                    try:
-                        json_response = sb.find_element(f"body").text
-                        with open("response.txt", "w") as f:
-                            f.write(json_response)
-                        json_response = json.loads(json_response)
-                        coins_data = json_response["data"]["rank"][:4]
+                    # Save the response for debugging
+                    with open("response.json", "w") as f:
+                        json.dump(json_response, f, indent=2)
 
-                        for coin in coins_data:
+                    # Process the coins data
+                    coins_data = json_response["data"]["rank"][:4]
+
+                    for coin in coins_data:
+                        token_address = "https://dexscreener.com/solana/" + coin["address"]
+                        if not self.was_token_sent_recently(token_address):
                             self.send_to_telegram(coin)
-                    except Exception as e:
-                        sb.save_screenshot("screenshot.png")
-                        with open("screenshot.png", "rb") as f:
-                            requests.post(
-                                f"https://api.telegram.org/bot{self.telegram_bot_token}/sendPhoto",
-                                data={"chat_id": 1815494992, "photo": f},
-                            )
-                        os.remove("screenshot.png")
-                        logger.error(f"Error parsing JSON response: {e}")
-                        logger.error(f"Full JSON response: {json_response}")
+                        else:
+                            logger.info(f"Skipping {coin['symbol']} as it was sent recently")
 
-                finally:
-                    try:
-                        sb.clear_session_storage()
-                        sb.delete_all_cookies()
-                        sb.driver.quit()
-                    except Exception as e:
-                        logger.error(f"Error during browser cleanup: {e}")
+                except ValueError as e:
+                    logger.error(f"Error parsing JSON response: {str(e)}")
+                    # Save the raw response for debugging
+                    with open("raw_response.txt", "w") as f:
+                        f.write(response.text)
+            else:
+                logger.error(f"Request failed with status code: {response.status_code}")
+                logger.error(f"Response: {response.text}")
 
         except Exception as e:
             logger.error(f"Scraping failed: {str(e)}", exc_info=True)
             raise
-        finally:
-            self.cleanup_temp_files()
 
 
 if __name__ == "__main__":
@@ -171,6 +177,3 @@ if __name__ == "__main__":
         scraper.scrape()
     except Exception as e:
         logger.error(f"Application failed: {str(e)}", exc_info=True)
-    finally:
-        if "scraper" in locals():
-            scraper.cleanup_temp_files()
