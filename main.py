@@ -28,6 +28,7 @@ class GmgnScraper:
         self.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
         self.url = "https://gmgn.ai/defi/quotation/v1/rank/sol/pump/1h?soaring=true"
         self.cache_file = "sent_tokens.json"
+        self.proxy = {"http": os.getenv("PROXY_URL"), "https": os.getenv("PROXY_URL")}
         self.load_cache()
 
     def load_cache(self):
@@ -134,18 +135,14 @@ class GmgnScraper:
 
             logger.info(f"Sending request to URL: {self.url}")
 
-            # Use curl_cffi to bypass Cloudflare protections
-            response = curl_requests.get(self.url, headers=headers, impersonate="chrome110", timeout=60)
+            response = curl_requests.get(
+                self.url, headers=headers, impersonate="chrome110", timeout=60, proxies=self.proxy
+            )
 
-            # Check if the request was successful
             if response.status_code == 200:
                 try:
                     json_response = response.json()
                     logger.info("Successfully retrieved data from API")
-
-                    # Save the response for debugging
-                    with open("response.json", "w") as f:
-                        json.dump(json_response, f, indent=2)
 
                     # Process the coins data
                     coins_data = json_response["data"]["rank"][:4]
